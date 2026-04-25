@@ -3,6 +3,8 @@
 - **nse_futures_discount.py**: To find discounted futures.
 - **nse_futures_premium_top30.py**: To find top 30 stocks with very high future premiums.
 
+Both scripts now write only an `.xlsx` output file. The final sheet also includes an `IS_NIFTY_50` column that marks whether each symbol is part of the NIFTY 50 index.
+
 ### Installation for Linux/WSL
 
 Clone this repo and execute below commands from the root of the repo.

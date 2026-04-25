@@ -1,3 +1,5 @@
 results*
 top_premium*
 venv/
+.codex
+__pycache__/

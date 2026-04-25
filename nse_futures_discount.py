@@ -20,6 +20,58 @@ import requests
 
 BASE_CM = "https://nsearchives.nseindia.com/content/cm/"
 BASE_FO = "https://nsearchives.nseindia.com/content/fo/"
+NIFTY_50_CONSTITUENTS_URL = "https://www.niftyindices.com/IndexConstituent/ind_nifty50list.csv"
+NIFTY_50_FALLBACK_SYMBOLS = {
+    "ADANIENT",
+    "ADANIPORTS",
+    "APOLLOHOSP",
+    "ASIANPAINT",
+    "AXISBANK",
+    "BAJAJ-AUTO",
+    "BAJAJFINSV",
+    "BAJFINANCE",
+    "BEL",
+    "BHARTIARTL",
+    "CIPLA",
+    "COALINDIA",
+    "DRREDDY",
+    "EICHERMOT",
+    "GRASIM",
+    "HCLTECH",
+    "HDFCBANK",
+    "HDFCLIFE",
+    "HEROMOTOCO",
+    "HINDALCO",
+    "HINDUNILVR",
+    "ICICIBANK",
+    "INDUSINDBK",
+    "INFY",
+    "ITC",
+    "JIOFIN",
+    "JSWSTEEL",
+    "KOTAKBANK",
+    "LT",
+    "M&M",
+    "MARUTI",
+    "NESTLEIND",
+    "NTPC",
+    "ONGC",
+    "POWERGRID",
+    "RELIANCE",
+    "SBILIFE",
+    "SBIN",
+    "SHRIRAMFIN",
+    "SUNPHARMA",
+    "TATACONSUM",
+    "TATAMOTORS",
+    "TATASTEEL",
+    "TCS",
+    "TECHM",
+    "TITAN",
+    "TRENT",
+    "ULTRACEMCO",
+    "WIPRO",
+}
 
 
 def yyyymmdd(d: date) -> str:
@@ -31,6 +83,10 @@ def build_urls(d: date) -> tuple[str, str]:
     cm_name = f"BhavCopy_NSE_CM_0_0_0_{ds}_F_0000.csv.zip"
     fo_name = f"BhavCopy_NSE_FO_0_0_0_{ds}_F_0000.csv.zip"
     return (BASE_CM + cm_name, BASE_FO + fo_name)
+
+
+def normalize_symbol(symbol: object) -> str:
+    return str(symbol).strip().upper()
 
 
 # --- Robust downloader (matches what worked for you in curl) ---
@@ -71,6 +127,34 @@ def unzip_single_csv(zip_bytes: bytes) -> pd.DataFrame:
             raise RuntimeError("Zip contains no CSV.")
         with zf.open(csv_names[0]) as f:
             return pd.read_csv(f)
+
+
+def get_nifty50_symbols(timeout: int = 30) -> set[str]:
+    """
+    Fetch the latest NIFTY 50 constituents from the official CSV.
+    Fall back to a bundled symbol set if the download is temporarily unavailable.
+    """
+    try:
+        response = _SESSION.get(NIFTY_50_CONSTITUENTS_URL, headers=_HEADERS, timeout=(8, timeout))
+        response.raise_for_status()
+        nifty_df = pd.read_csv(io.BytesIO(response.content))
+        symbol_col = next(
+            (col for col in ("Symbol", "SYMBOL", "symbol", "Ticker", "Ticker Symbol") if col in nifty_df.columns),
+            None,
+        )
+        if not symbol_col:
+            raise RuntimeError(f"NIFTY 50 CSV is missing a symbol column. Columns: {list(nifty_df.columns)}")
+
+        symbols = {normalize_symbol(value) for value in nifty_df[symbol_col].dropna()}
+        if not symbols:
+            raise RuntimeError("NIFTY 50 CSV did not return any symbols.")
+        return symbols
+    except Exception as exc:
+        print(
+            f"Warning: could not refresh NIFTY 50 constituents from official CSV, "
+            f"using bundled fallback list instead. Reason: {exc}"
+        )
+        return NIFTY_50_FALLBACK_SYMBOLS.copy()
 
 
 def get_for_trading_day(target: date, max_backtrack_days: int = 7) -> tuple[date, pd.DataFrame, pd.DataFrame]:
@@ -141,10 +225,13 @@ def find_discounted_futures(cm_df: pd.DataFrame, fo_df: pd.DataFrame) -> pd.Data
 
     m["DISCOUNT_%"] = (m["FUT_CLOSE"] - m["SPOT_CLOSE"]) / m["SPOT_CLOSE"] * 100
 
+    nifty_50_symbols = get_nifty50_symbols()
+
     out = m[m["DISCOUNT_%"] < 0].copy()
+    out["IS_NIFTY_50"] = out["SYMBOL"].map(lambda symbol: "Yes" if normalize_symbol(symbol) in nifty_50_symbols else "No")
     out = out.sort_values("DISCOUNT_%", ascending=True)
 
-    return out[["SYMBOL", "EXPIRY", "SPOT_CLOSE", "FUT_CLOSE", "DISCOUNT_%", "OPEN_INT"]]
+    return out[["SYMBOL", "IS_NIFTY_50", "EXPIRY", "SPOT_CLOSE", "FUT_CLOSE", "DISCOUNT_%", "OPEN_INT"]]
 
 
 def main():
@@ -166,17 +253,12 @@ def main():
     outdir = args.outdir.rstrip("/")
 
     xlsx_path = f"{outdir}/results_{ds}.xlsx"
-    csv_path = f"{outdir}/results_{ds}.csv"
-
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as w:
         result.to_excel(w, index=False, sheet_name="FUT_LT_SPOT")
-
-    result.to_csv(csv_path, index=False)
 
     print(f"\nTrading day used: {trade_day.isoformat()}")
     print(f"Rows (FUT < SPOT): {len(result)}")
     print(f"Wrote: {xlsx_path}")
-    print(f"Wrote: {csv_path}")
 
 
 if __name__ == "__main__":
