@@ -3,3 +3,5 @@ top_premium*
 venv/
 .codex
 __pycache__/
+/data/nse_cache/
+/reports/
