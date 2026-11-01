@@ -6,6 +6,7 @@ import io
 import sys
 import time
 import zipfile
+from copy import copy
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -259,12 +260,13 @@ def export(result: pd.DataFrame, destination: Path, trading_day: date, limit: in
             'Only NSE UDiFF stock futures and spot EQ are analyzed; no NIFTY regime filter yet.',
         ]})
         notes.to_excel(writer, sheet_name='READ_ME', index=False)
-        for sheet in writer.book:
-            ws = writer.book[sheet]
+        for ws in writer.book.worksheets:
             ws.freeze_panes = 'A2'
             ws.auto_filter.ref = ws.dimensions
             for cell in ws[1]:
-                cell.font = cell.font.copy(bold=True)
+                font = copy(cell.font)
+                font.bold = True
+                cell.font = font
             for column in ws.columns:
                 col_letter = column[0].column_letter
                 ws.column_dimensions[col_letter].width = min(58, max(14, max(len(str(c.value or '')) for c in column[:min(50, len(column))])+2))

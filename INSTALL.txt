@@ -1,8 +1,0 @@
-This ZIP is an ADDITIVE PATCH, not a full copy of the GitHub repository.
-1. Clone the original repo on your machine, then git checkout -b feature/swing-short-screener
-2. Extract this ZIP into the repo ROOT, retaining swing_short/ and tests/.
-3. Append the lines from .gitignore.append to the existing .gitignore.
-4. Ensure requirements.txt includes pandas, numpy, requests, openpyxl. (They may already be present.)
-5. python -m pytest -q tests/test_swing_short.py (install pytest first)
-6. python -m swing_short.screener --date 2026-10-30
-7. Review swing_short/README.md for data and trading limitations.

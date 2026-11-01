@@ -1,7 +1,10 @@
 from datetime import date, timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
-from swing_short.screener import indicators, prior_contract_row, scan
+from openpyxl import load_workbook
+from swing_short.screener import export, indicators, prior_contract_row, scan
 
 
 def sample_data():
@@ -46,3 +49,23 @@ def test_screen_runs_with_history():
     assert len(out) == 1
     assert out.iloc[0].SYMBOL == 'TEST'
     assert out.iloc[0].SPOT_BREAKDOWN_CLOSE_BELOW < s.iloc[-1].close + 5
+
+
+def test_export_formats_all_worksheets():
+    result = pd.DataFrame([{
+        'SYMBOL': 'TEST', 'STATUS': 'WATCH_BREAKDOWN', 'SCORE': 75,
+        'RAW_BASIS_PCT': -0.5, 'SPOT_BREAKDOWN_CLOSE_BELOW': 100,
+        'SPOT_INVALIDATION_ABOVE': 105, 'SPOT_TARGET_R1': 95,
+        'SPOT_TARGET_R2': 90,
+    }])
+    with TemporaryDirectory() as directory:
+        workbook_path, text_path = export(result, Path(directory), date(2026, 6, 1))
+        workbook = load_workbook(workbook_path)
+        assert workbook.sheetnames == ['SHORTLIST', 'ALL_SCREENED', 'READ_ME']
+        for sheet in workbook.worksheets:
+            assert sheet.freeze_panes == 'A2'
+            assert sheet.auto_filter.ref == sheet.dimensions
+            assert sheet['A1'].font.bold
+            assert sheet.column_dimensions['A'].width >= 14
+        assert workbook['SHORTLIST']['A2'].value == 'TEST'
+        assert 'TEST' in text_path.read_text(encoding='utf-8')
